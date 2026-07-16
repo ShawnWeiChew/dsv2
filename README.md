@@ -7,8 +7,8 @@
     - [ ] Scaled Matmul (decode-oriented)
     - [ ] YaRN RoPE encoding
     - [x] Softmax
-    - [ ] RMSNorm
-    - [ ] Silu
+    - [x] RMSNorm
+    - [x] Silu
 - [ ] Forward pass operations
     - [x] Tokenization
     - [ ] Embedding Generation
@@ -16,7 +16,7 @@
     - [ ] MoE gate
     - [ ] MoE ffn
 - [ ] State to manage
-    - [ ] JSON parsing
+    - [x] JSON parsing
     - [ ] Weight loading
         - [ ] Figure out weight layout
     - [ ] KV cache
