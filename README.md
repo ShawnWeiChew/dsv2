@@ -6,7 +6,7 @@
 - [ ] Base operations
     - [ ] Scaled Matmul (decode-oriented)
     - [ ] YaRN RoPE encoding
-    - [ ] Softmax
+    - [x] Softmax
     - [ ] RMSNorm
     - [ ] Silu
 - [ ] Forward pass operations
