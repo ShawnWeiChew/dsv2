@@ -24,13 +24,16 @@ TEST_OPS_TARGET=$(TARGET_FOLDER)/test_ops
 all : $(TARGET_NAME)
 
 $(TARGET_NAME) : $(TARGET_OBJ_FILE) $(SRC_OBJ_FILES)
-	$(CC) $(CFLAGS) $(INCLUDE) $(LDFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ $(LDFLAGS) 
 
 $(TARGET_OBJ_FILE) : $(TARGET_FILE_NAME) | $(TARGET_FOLDER)
 	$(CC) $(CFLAGS) $(INCLUDE) -c -o $@ $^
 
-$(SRC_OBJ_FILES) : $(SRC_FILES) | $(TARGET_FOLDER)
-	$(CC) $(CFLAGS) $(INCLUDE) $(LDFLAGS) -c -o $@ $<
+# NOTE: this was the way, it becomes multiple rules
+# Also, the "|" on the right means that it is a prereq before the target is built, 
+# but it is also not something that would trigger a rebuild if it changes
+$(TARGET_FOLDER)/%.o : $(SRC_FOLDER)/%.c | $(TARGET_FOLDER)
+	$(CC) $(CFLAGS) $(INCLUDE) -c -o $@ $< $(LDFLAGS)
 
 check : $(TEST_OPS_TARGET)
 	./build/test_ops

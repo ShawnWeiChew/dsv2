@@ -2,6 +2,7 @@
 #define OPS_H
 
 #include "config.h"
+#include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
 
@@ -28,5 +29,40 @@ void silu(float *in, size_t M, size_t N);
 void ds_matmul_4bit(
     float *out, float *in, uint32_t *weights, _Float16 *scales, _Float16 *biases, size_t N, size_t K
 );
+
+#define DS_YARN_ROTATION_FLOOR   1.0f
+#define DS_YARN_ROTATION_CEILING 32.0f
+#define DS_SCALE_FACTOR          40
+#define DS_YARN_MSCALE           ((0.707 / 0.707))
+#define DS_YARN_BASE             10000
+#define DS_INTIAL_CONTEXT_LEN    4096.0f
+
+typedef struct {
+    int idx1;
+    int idx2;
+    bool idx_2_neg;
+} YarnInterleavedAccessPattern;
+
+typedef struct {
+    // should be populated up till max sequence length
+    float *cos;
+    float *sin;
+    // should span one hidden dim
+    YarnInterleavedAccessPattern *access_pattern;
+} YarnConstants;
+
+/**
+ * Generate sin and cos cache, both of which have dimensions of
+ */
+void setup_yarn_sin_cos_cache(
+    DeepseekConfig *config, YarnConstants *yarn_constants, size_t cache_len
+);
+
+/**
+ * M gives the outer position, N gives the position within the hidden dimension
+ */
+void yarn(float *in, float *out, size_t M, size_t N, YarnConstants *yarn_constants);
+
+void free_yarn_sin_cos_cache(YarnConstants *yarn_constants);
 
 #endif

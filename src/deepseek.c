@@ -1,6 +1,8 @@
 #include "../include/config.h"
+#include "../include/ops.h"
 #include "../include/tokenizer.h"
 #include <stdio.h>
+#include <time.h>
 
 DeepseekConfig deepseek_config = {
     .vocab_size = DS_VOCAB_SIZE,
@@ -20,18 +22,22 @@ DeepseekConfig deepseek_config = {
 };
 
 int main() {
-    Tokenizer tokenizer;
-    build_tokenizer(&tokenizer);
+    // Tokenizer tokenizer;
+    // build_tokenizer(&tokenizer);
 
-    char t1[] = "I love Deepseek!";
-    int output_buffer[128];
-    size_t output_buffer_len;
-    encode(&tokenizer, t1, output_buffer, &output_buffer_len);
+    // char t1[] = "I love Deepseek!";
+    // int output_buffer[128];
+    // size_t output_buffer_len;
+    // encode(&tokenizer, t1, output_buffer, &output_buffer_len);
 
-    for (int i = 0; i < output_buffer_len; i++) {
-        printf("%d | ", output_buffer[i]);
-    }
-    printf("\n");
+    // for (int i = 0; i < output_buffer_len; i++) {
+    //     printf("%d | ", output_buffer[i]);
+    // }
+    // printf("\n");
 
-    free_tokenizer(&tokenizer);
+    // free_tokenizer(&tokenizer);
+
+    YarnConstants yc = {.cos = NULL, .sin = NULL};
+    setup_yarn_sin_cos_cache(&deepseek_config, &yc, 2048);
+    yarn(NULL, NULL, 1, 1, &yc);
 }
