@@ -4,7 +4,7 @@
 
 ## Todos:
 - [ ] Base operations
-    - [ ] Scaled Matmul (decode-oriented)
+    - [x] Scaled Matmul (decode-oriented)
     - [ ] YaRN RoPE encoding
     - [x] Softmax
     - [x] RMSNorm

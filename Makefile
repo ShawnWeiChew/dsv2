@@ -1,5 +1,6 @@
 CC=gcc
 CFLAGS=-Wall
+DEBUG_CFLAGS=-fsanitize=address -g -fno-omit-frame-pointer
 INCLUDE=-Iinclude -Ithirdparty
 LDFLAGS=-lm
 
@@ -36,10 +37,10 @@ check : $(TEST_OPS_TARGET)
 # 	./build/test_tokenizer
 
 $(TEST_TOKENIZER_TARGET) : tests/test_tokenizer.c src/tokenizer.c | $(TARGET_FOLDER)
-	$(CC) $(INCLUDE) -o $@ $^ 
+	$(CC) $(INCLUDE) $(DEBUG_CFLAGS) -o $@ $^ 
 
 $(TEST_OPS_TARGET) : tests/test_ops.c src/ops.c | $(TARGET_FOLDER)
-	$(CC) $(INCLUDE) -o $@ $^ $(LDFLAGS)
+	$(CC) $(INCLUDE) $(DEBUG_CFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(TARGET_FOLDER) :
 	mkdir -p $(TARGET_FOLDER)
