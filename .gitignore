@@ -3,3 +3,4 @@ build
 # weights
 tokenizer.json
 *.bin
+*.safetensors
