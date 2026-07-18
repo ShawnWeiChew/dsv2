@@ -17,8 +17,8 @@
     - [ ] MoE ffn
 - [ ] State to manage
     - [x] JSON parsing
-    - [ ] Weight loading
-        - [ ] Figure out weight layout
+    - [x] Weight loading
+        - [x] Figure out weight layout
     - [ ] KV cache
 
 ### Some Notes / Mistakes I made

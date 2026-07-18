@@ -5,20 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 
-// Helper: look up a key in a json object, returns the value or NULL
-static struct json_value_s *json_object_get(struct json_value_s *obj_val, const char *key) {
-    struct json_object_s *obj = json_value_as_object(obj_val);
-    if (!obj)
-        return NULL;
-
-    for (struct json_object_element_s *el = obj->start; el; el = el->next) {
-        if (strcmp(el->name->string, key) == 0) {
-            return el->value;
-        }
-    }
-    return NULL;
-}
-
 void build_tokenizer(Tokenizer *t) {
     t->vocab = (char **)calloc(DS_VOCAB_SIZE, sizeof(char *));
     t->merge_targets =

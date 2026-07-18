@@ -3513,4 +3513,19 @@ void *json_write_pretty(const struct json_value_s *value, const char *indent,
 #pragma warning(pop)
 #endif
 
+// helper function to look up a key in a json object
+json_weak struct json_value_s *json_object_get(struct json_value_s *obj_val, const char *key);
+struct json_value_s *json_object_get(struct json_value_s *obj_val, const char *key) {
+    struct json_object_s *obj = json_value_as_object(obj_val);
+    if (!obj)
+        return NULL;
+
+    for (struct json_object_element_s *el = obj->start; el; el = el->next) {
+        if (strcmp(el->name->string, key) == 0) {
+            return el->value;
+        }
+    }
+    return NULL;
+}
+
 #endif /* SHEREDOM_JSON_H_INCLUDED. */
