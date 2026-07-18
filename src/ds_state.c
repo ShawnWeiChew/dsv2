@@ -553,6 +553,8 @@ static void configure_offsets(DSWeights *weights) {
         );
     }
 
+    load_single_field((void **)&weights->model_layernorm, root2, data_base_2, "model.norm.weight");
+
     // load the lm_head layers
     load_all_quantized_fields(
         (void **)&weights->lm_head.lm_head_biases, root2, data_base_2, "lm_head"
