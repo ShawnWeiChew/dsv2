@@ -1,4 +1,5 @@
 #include "../include/config.h"
+#include "../include/ds_state.h"
 #include "../include/ops.h"
 #include "../include/tokenizer.h"
 #include <stdio.h>
@@ -37,7 +38,10 @@ int main() {
 
     // free_tokenizer(&tokenizer);
 
-    YarnConstants yc = {.cos = NULL, .sin = NULL};
-    setup_yarn_sin_cos_cache(&deepseek_config, &yc, 2048);
-    yarn(NULL, NULL, 1, 1, &yc);
+    // YarnConstants yc = {.cos = NULL, .sin = NULL};
+    // setup_yarn_sin_cos_cache(&deepseek_config, &yc, 2048);
+    // yarn(NULL, NULL, 1, 1, &yc);
+
+    DSWeights weights;
+    load_weights(&weights);
 }

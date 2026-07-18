@@ -5,95 +5,99 @@
 #ifndef STATE_H
 #define STATE_H
 
+#include "config.h"
 #include <stdint.h>
 
 typedef struct {
-    _Float16 biases[102400 * 32];
-    _Float16 scales[102400 * 32];
-    uint32_t weights[102400 * 256];
+    uint64_t biases_offset;
+    uint64_t scales_offset;
+    uint64_t weights_offset;
 } DSEmbedLayerWeights;
 
 typedef struct {
-    _Float16 input_layernorm[2048];
+    uint64_t input_layernorm_offset;
 
     // down proj
-    _Float16 down_proj_biases[2048 * 171];
-    _Float16 down_proj_scales[2048 * 171];
-    uint32_t down_proj_weights[2048 * 1368];
+    uint64_t down_proj_biases_offset;
+    uint64_t down_proj_scales_offset;
+    uint64_t down_proj_weights_offset;
 
     // swiglu
-    _Float16 gate_proj_biases[10944 * 32];
-    _Float16 gate_proj_scales[10944 * 32];
-    uint32_t gate_proj_weights[10944 * 256];
+    uint64_t gate_proj_biases_offset;
+    uint64_t gate_proj_scales_offset;
+    uint64_t gate_proj_weights_offset;
 
     // up proj
-    _Float16 up_proj_biases[10944 * 32];
-    _Float16 up_proj_scales[10944 * 32];
-    uint32_t up_proj_weights[10944 * 256];
+    uint64_t up_proj_biases_offset;
+    uint64_t up_proj_scales_offset;
+    uint64_t up_proj_weights_offset;
 } DSMLPLayerWeights;
 
 typedef struct {
-    _Float16 post_attention_layernorm[512];
+    uint64_t post_attention_layernorm_offset;
+    uint64_t kv_a_layernorm_offset;
 
     // kva proj - compression
-    _Float16 kv_a_proj_biases[576 * 32];
-    _Float16 kv_a_proj_scales[576 * 32];
-    uint32_t kv_a_proj_weights[576 * 256];
+    uint64_t kv_a_proj_biases_offset;
+    uint64_t kv_a_proj_scales_offset;
+    uint64_t kv_a_proj_weights_offset;
 
     // kvb proj - uncompression
-    _Float16 kv_b_proj_biases[4096 * 32];
-    _Float16 kv_b_proj_scales[4096 * 32];
-    uint32_t kv_b_proj_weights[4096 * 64];
+    uint64_t kv_b_proj_biases_offset;
+    uint64_t kv_b_proj_scales_offset;
+    uint64_t kv_b_proj_weights_offset;
 
     // o_proj
-    _Float16 o_proj_biases[2048 * 32];
-    _Float16 o_proj_scales[2048 * 32];
-    uint32_t o_proj_weights[2048 * 256];
+    uint64_t o_proj_biases_offset;
+    uint64_t o_proj_scales_offset;
+    uint64_t o_proj_weights_offset;
 
     // q_proj
-    _Float16 q_proj_biases[3072 * 32];
-    _Float16 q_proj_scales[3072 * 32];
-    uint32_t q_proj_weights[3072 * 256];
+    uint64_t q_proj_biases_offset;
+    uint64_t q_proj_scales_offset;
+    uint64_t q_proj_weights_offset;
 } DSMLALayerWeights;
 
 typedef struct {
+    uint64_t input_layernorm_offset;
+
     // shared down
-    _Float16 shared_down_biases[2048 * 44];
-    _Float16 shared_down_scales[2048 * 44];
-    uint32_t shared_down_weights[2048 * 352];
+    uint64_t shared_down_biases_offset;
+    uint64_t shared_down_scales_offset;
+    uint64_t shared_down_weights_offset;
 
     // shared gate
-    _Float16 shared_gate_biases[2816 * 32];
-    _Float16 shared_gate_scales[2816 * 32];
-    uint32_t shared_gate_weights[2816 * 256];
+    uint64_t shared_gate_biases_offset;
+    uint64_t shared_gate_scales_offset;
+    uint64_t shared_gate_weights_offset;
 
     // shared up
-    _Float16 shared_up_biases[2816 * 32];
-    _Float16 shared_up_scales[2816 * 32];
-    uint32_t shared_up_weights[2816 * 256];
+    uint64_t shared_up_biases_offset;
+    uint64_t shared_up_scales_offset;
+    uint64_t shared_up_weights_offset;
 
-    _Float16 moe_gate_weights[64 * 2048];
+    uint64_t moe_gate_weights_offset;
 
     // routed down
-    _Float16 routed_down_biases[64 * 2048 * 22];
-    _Float16 routed_down_scales[64 * 2048 * 22];
-    uint32_t routed_down_weights[64 * 2048 * 22];
+    uint64_t routed_down_biases_offset;
+    uint64_t routed_down_scales_offset;
+    uint64_t routed_down_weights_offset;
 
     // routed gate
-    _Float16 routed_gate_biases[64 * 1408 * 32];
-    _Float16 routed_gate_scales[64 * 1408 * 32];
-    uint32_t routed_gate_weights[64 * 1408 * 256];
+    uint64_t routed_gate_biases_offset;
+    uint64_t routed_gate_scales_offset;
+    uint64_t routed_gate_weights_offset;
 
     // routed up
-    _Float16 routed_up_biases[64 * 1408 * 32];
-    _Float16 routed_up_scales[64 * 1408 * 32];
-    uint32_t routed_up_weights[64 * 1408 * 256];
+    uint64_t routed_up_biases_offset;
+    uint64_t routed_up_scales_offset;
+    uint64_t routed_up_weights_offset;
 } DSMoELayerWeights;
 
 typedef struct {
-    _Float16 lm_head_biases[102400 * 32];
-    _Float16 lm_head_scales[102400 * 32];
-    uint32_t lm_head_weights[102400 * 256];
+    uint64_t lm_head_biases_offset;
+    uint64_t lm_head_scales_offset;
+    uint64_t lm_head_weights_offset;
 } DSLmHeadWeights;
 
 typedef struct {
@@ -110,17 +114,28 @@ typedef struct {
 typedef struct {
     DSEmbedLayerWeights embed;
 
-    DSDenseLayerWeights layer0;
+    DSDenseLayerWeights dense_layer;
 
-    DSExpertLayerWeights moe_layers_first_half[15];
-
-    // TODO: account for layer 16....
-
-    DSExpertLayerWeights moe_layers_second_half[11];
+    DSExpertLayerWeights moe_layers[DS_N_LAYERS - 1];
 
     DSLmHeadWeights lm_head;
 } DSWeights;
 
-void load_weights();
+#define DS_WEIGHTS_FILE_1           "model-00001-of-00002.safetensors"
+#define DS_WEIGHTS_FILE_2           "model-00002-of-00002.safetensors"
+
+#define DS_WEIGHT_OFFSET_FIELD_NAME "data_offsets"
+
+/**
+ * The safetensors format is:
+ * 8 bytes for size of header, N
+ *
+ * N bytes for header which tells you the offset for all the other weights
+ *
+ * Based on inspection of the file, it seems like the weights are scattered all about, so we have to
+ * resort to tracking the offsets. Note sure if this is an MLX problem or an issue with all
+ * safetensors
+ */
+void load_weights(DSWeights *weights);
 
 #endif
