@@ -6,98 +6,102 @@
 #define STATE_H
 
 #include "config.h"
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
+typedef enum { DS_FILE_1 = 0, DS_FILE_2 = 1 } DSWeightsFileNo;
+
 typedef struct {
-    uint64_t biases_offset;
-    uint64_t scales_offset;
-    uint64_t weights_offset;
+    _Float16 *biases;
+    _Float16 *scales;
+    uint32_t *weights;
 } DSEmbedLayerWeights;
 
 typedef struct {
-    uint64_t input_layernorm_offset;
+    _Float16 *input_layernorm;
 
     // down proj
-    uint64_t down_proj_biases_offset;
-    uint64_t down_proj_scales_offset;
-    uint64_t down_proj_weights_offset;
+    _Float16 *down_proj_biases;
+    _Float16 *down_proj_scales;
+    uint32_t *down_proj_weights;
 
     // swiglu
-    uint64_t gate_proj_biases_offset;
-    uint64_t gate_proj_scales_offset;
-    uint64_t gate_proj_weights_offset;
+    _Float16 *gate_proj_biases;
+    _Float16 *gate_proj_scales;
+    uint32_t *gate_proj_weights;
 
     // up proj
-    uint64_t up_proj_biases_offset;
-    uint64_t up_proj_scales_offset;
-    uint64_t up_proj_weights_offset;
+    _Float16 *up_proj_biases;
+    _Float16 *up_proj_scales;
+    uint32_t *up_proj_weights;
 } DSMLPLayerWeights;
 
 typedef struct {
-    uint64_t post_attention_layernorm_offset;
-    uint64_t kv_a_layernorm_offset;
+    _Float16 *post_attention_layernorm;
+    _Float16 *kv_a_layernorm;
 
     // kva proj - compression
-    uint64_t kv_a_proj_biases_offset;
-    uint64_t kv_a_proj_scales_offset;
-    uint64_t kv_a_proj_weights_offset;
+    _Float16 *kv_a_proj_biases;
+    _Float16 *kv_a_proj_scales;
+    uint32_t *kv_a_proj_weights;
 
     // kvb proj - uncompression
-    uint64_t kv_b_proj_biases_offset;
-    uint64_t kv_b_proj_scales_offset;
-    uint64_t kv_b_proj_weights_offset;
+    _Float16 *kv_b_proj_biases;
+    _Float16 *kv_b_proj_scales;
+    uint32_t *kv_b_proj_weights;
 
     // o_proj
-    uint64_t o_proj_biases_offset;
-    uint64_t o_proj_scales_offset;
-    uint64_t o_proj_weights_offset;
+    _Float16 *o_proj_biases;
+    _Float16 *o_proj_scales;
+    uint32_t *o_proj_weights;
 
     // q_proj
-    uint64_t q_proj_biases_offset;
-    uint64_t q_proj_scales_offset;
-    uint64_t q_proj_weights_offset;
+    _Float16 *q_proj_biases;
+    _Float16 *q_proj_scales;
+    uint32_t *q_proj_weights;
 } DSMLALayerWeights;
 
 typedef struct {
-    uint64_t input_layernorm_offset;
+    _Float16 *input_layernorm;
 
     // shared down
-    uint64_t shared_down_biases_offset;
-    uint64_t shared_down_scales_offset;
-    uint64_t shared_down_weights_offset;
+    _Float16 *shared_down_biases;
+    _Float16 *shared_down_scales;
+    uint32_t *shared_down_weights;
 
     // shared gate
-    uint64_t shared_gate_biases_offset;
-    uint64_t shared_gate_scales_offset;
-    uint64_t shared_gate_weights_offset;
+    _Float16 *shared_gate_biases;
+    _Float16 *shared_gate_scales;
+    uint32_t *shared_gate_weights;
 
     // shared up
-    uint64_t shared_up_biases_offset;
-    uint64_t shared_up_scales_offset;
-    uint64_t shared_up_weights_offset;
+    _Float16 *shared_up_biases;
+    _Float16 *shared_up_scales;
+    uint32_t *shared_up_weights;
 
-    uint64_t moe_gate_weights_offset;
+    _Float16 *moe_gate_weights;
 
     // routed down
-    uint64_t routed_down_biases_offset;
-    uint64_t routed_down_scales_offset;
-    uint64_t routed_down_weights_offset;
+    _Float16 *routed_down_biases;
+    _Float16 *routed_down_scales;
+    uint32_t *routed_down_weights;
 
     // routed gate
-    uint64_t routed_gate_biases_offset;
-    uint64_t routed_gate_scales_offset;
-    uint64_t routed_gate_weights_offset;
+    _Float16 *routed_gate_biases;
+    _Float16 *routed_gate_scales;
+    uint32_t *routed_gate_weights;
 
     // routed up
-    uint64_t routed_up_biases_offset;
-    uint64_t routed_up_scales_offset;
-    uint64_t routed_up_weights_offset;
+    _Float16 *routed_up_biases;
+    _Float16 *routed_up_scales;
+    uint32_t *routed_up_weights;
 } DSMoELayerWeights;
 
 typedef struct {
-    uint64_t lm_head_biases_offset;
-    uint64_t lm_head_scales_offset;
-    uint64_t lm_head_weights_offset;
+    _Float16 *lm_head_biases;
+    _Float16 *lm_head_scales;
+    uint32_t *lm_head_weights;
 } DSLmHeadWeights;
 
 typedef struct {
@@ -119,6 +123,11 @@ typedef struct {
     DSExpertLayerWeights moe_layers[DS_N_LAYERS - 1];
 
     DSLmHeadWeights lm_head;
+
+    void *file1_base;
+    size_t file1_size;
+    void *file2_base;
+    size_t file2_size;
 } DSWeights;
 
 #define DS_WEIGHTS_FILE_1           "model-00001-of-00002.safetensors"
@@ -138,4 +147,5 @@ typedef struct {
  */
 void load_weights(DSWeights *weights);
 
+void free_weights(DSWeights *weights);
 #endif

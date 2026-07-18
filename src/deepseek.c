@@ -44,4 +44,5 @@ int main() {
 
     DSWeights weights;
     load_weights(&weights);
+    free_weights(&weights);
 }
