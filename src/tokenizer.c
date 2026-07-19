@@ -90,6 +90,8 @@ void build_tokenizer(Tokenizer *t) {
             idx++;
         }
     }
+
+    free(root);
 }
 
 // NOTE: this is very inefficient but I think thats okay because the sequence is small + we are

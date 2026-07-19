@@ -35,9 +35,9 @@ $(TARGET_OBJ_FILE) : $(TARGET_FILE_NAME) | $(TARGET_FOLDER)
 $(TARGET_FOLDER)/%.o : $(SRC_FOLDER)/%.c | $(TARGET_FOLDER)
 	$(CC) $(CFLAGS) $(DEBUG_CFLAGS) $(INCLUDE) -c -o $@ $< $(LDFLAGS)
 
-check : $(TEST_OPS_TARGET)
+check : $(TEST_OPS_TARGET) $(TEST_TOKENIZER_TARGET)
 	./build/test_ops
-# 	./build/test_tokenizer
+	./build/test_tokenizer
 
 $(TEST_TOKENIZER_TARGET) : tests/test_tokenizer.c src/tokenizer.c | $(TARGET_FOLDER)
 	$(CC) $(INCLUDE) $(DEBUG_CFLAGS) -o $@ $^ 

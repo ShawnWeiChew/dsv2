@@ -45,4 +45,5 @@ int main() {
     assert(test_encoding(&t, t2, expected_output2, expected_output2_len));
 
     puts("All tokenizer tests passed");
+    free_tokenizer(&t);
 }

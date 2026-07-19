@@ -200,7 +200,7 @@ int main() {
 #include "test_moe_data.h"
 
     DSRunningState state;
-    allocate_running_state(&state, &deepseek_config);
+    allocate_running_state(&state, &deepseek_config, 2048);
 
     ds_moe_layer(&state, &deepseek_config, &weights.moe_layers[0].moe, x);
 

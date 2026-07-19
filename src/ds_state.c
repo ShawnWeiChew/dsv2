@@ -579,8 +579,7 @@ void free_weights(DSWeights *weights) {
 void allocate_running_state(
     DSRunningState *state, DeepseekConfig *config, size_t max_sequence_len
 ) {
-    state->kv_lora_cache =
-        calloc(config->n_layers * max_sequence_len * config->kv_lora_rank, sizeof(float));
+    // TODO:  clean up allocations
     state->k_rope_cache =
         calloc(config->n_layers * max_sequence_len * config->qk_rope_head_dim, sizeof(float));
 
@@ -599,7 +598,6 @@ void allocate_running_state(
 }
 
 void free_running_state(DSRunningState *state) {
-    free(state->kv_lora_cache);
     free(state->k_rope_cache);
 
     free(state->topk_routing_results);
