@@ -305,20 +305,6 @@ void ds_moe_layer(
             config->hidden_dim
         );
 
-        // printf(
-        //     "exp[0]: %d, %.6f  exp[1]: %d, %.6f\n",
-        //     top_experts[0].idx,
-        //     top_experts[0].score,
-        //     top_experts[1].idx,
-        //     top_experts[1].score
-        // );
-        // for (int k = 0; k < 10; k++) {
-        //     float a = state->routed_expert_up_scratch[k];
-        //     printf("%.6f | ", a);
-        // }
-        // putchar('\n');
-        // exit(2);
-
         // other swiglu weight
         // (1408, 2048) @ (2048,) -> (1408,)
         ds_matmul_4bit(
@@ -405,12 +391,6 @@ void ds_moe_layer(
         config->hidden_dim,
         config->moe_hidden_size * 2
     );
-
-    // for (int i = 0; i < 2048; i++) {
-    //     printf("%f | ", state->shared_expert_down_scratch[i]);
-    // }
-    // putchar('\n');
-    // exit(3);
 
     for (int i = 0; i < config->hidden_dim; i++) {
         state->moe_ffn_sum[i] += state->shared_expert_down_scratch[i];
