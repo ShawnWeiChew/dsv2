@@ -576,7 +576,14 @@ void free_weights(DSWeights *weights) {
 }
 
 // state management functions
-void allocate_running_state(DSRunningState *state, DeepseekConfig *config) {
+void allocate_running_state(
+    DSRunningState *state, DeepseekConfig *config, size_t max_sequence_len
+) {
+    state->kv_lora_cache =
+        calloc(config->n_layers * max_sequence_len * config->kv_lora_rank, sizeof(float));
+    state->k_rope_cache =
+        calloc(config->n_layers * max_sequence_len * config->qk_rope_head_dim, sizeof(float));
+
     state->topk_routing_results = calloc(config->n_routed_experts, sizeof(float));
     state->routed_expert_up_scratch = calloc(config->moe_hidden_size, sizeof(float));
     state->routed_expert_swiglu_scratch = calloc(config->moe_hidden_size, sizeof(float));
@@ -592,6 +599,9 @@ void allocate_running_state(DSRunningState *state, DeepseekConfig *config) {
 }
 
 void free_running_state(DSRunningState *state) {
+    free(state->kv_lora_cache);
+    free(state->k_rope_cache);
+
     free(state->topk_routing_results);
     free(state->routed_expert_up_scratch);
     free(state->routed_expert_swiglu_scratch);

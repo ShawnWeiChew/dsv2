@@ -151,6 +151,10 @@ void load_weights(DSWeights *weights);
 void free_weights(DSWeights *weights);
 
 typedef struct {
+    // MLA layer
+    float *kv_lora_cache; // (layer, sequence_number, 512), q here stands for quantized
+    float *k_rope_cache;  // (layer, sequence_number, 64)
+
     // MoE layer
     float *topk_routing_results;         // (64,)
     float *routed_expert_up_scratch;     // (1408,)
@@ -164,7 +168,11 @@ typedef struct {
     float *moe_ffn_sum; // (2048,)
 } DSRunningState;
 
-void allocate_running_state(DSRunningState *state, DeepseekConfig *config);
+/**
+ * Use max_sequence_len argument to prevent allocating a huge context window that you dont really
+ * use
+ */
+void allocate_running_state(DSRunningState *state, DeepseekConfig *config, size_t max_sequence_len);
 void free_running_state(DSRunningState *state);
 
 #endif
