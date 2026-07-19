@@ -93,4 +93,14 @@ void ds_moe_layer(
     DSRunningState *state, DeepseekConfig *config, DSMoELayerWeights *weights, float *in
 );
 
+/**
+ * MLA operations
+ * - kv_a_proj -> kv_down (cached) + k_rope (apply rope and cache)
+ * - kv_b_proj
+ * - q_proj ->
+ */
+void ds_mla_layer(
+    DSRunningState *state, DeepseekConfig *config, DSMLALayerWeights *weights, float *in
+);
+
 #endif
