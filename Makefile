@@ -42,7 +42,7 @@ check : $(TEST_OPS_TARGET)
 $(TEST_TOKENIZER_TARGET) : tests/test_tokenizer.c src/tokenizer.c | $(TARGET_FOLDER)
 	$(CC) $(INCLUDE) $(DEBUG_CFLAGS) -o $@ $^ 
 
-$(TEST_OPS_TARGET) : tests/test_ops.c src/ops.c | $(TARGET_FOLDER)
+$(TEST_OPS_TARGET) : tests/test_ops.c src/ops.c src/ds_state.c | $(TARGET_FOLDER)
 	$(CC) $(INCLUDE) $(DEBUG_CFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(TARGET_FOLDER) :

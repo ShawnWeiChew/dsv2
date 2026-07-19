@@ -13,7 +13,7 @@
     - [x] Tokenization
     - [ ] Embedding Generation
     - [ ] MLA
-    - [ ] MoE gate
+    - [x] MoE gate
     - [ ] MoE ffn
 - [ ] State to manage
     - [x] JSON parsing
@@ -32,3 +32,5 @@
         - The right way to check this should have been with the `encode("utf-8")`
 - YaRN
     - Should always verify whether the sum is up to `head_dim` or `head_dim / 2`
+- Quantized MatMul formula
+    - MLX defines a different quantized matmul formula. I should not have assumed that there is only one formula :(

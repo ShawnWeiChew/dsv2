@@ -574,3 +574,32 @@ void free_weights(DSWeights *weights) {
     munmap(weights->file1_base, weights->file1_size);
     munmap(weights->file2_base, weights->file2_size);
 }
+
+// state management functions
+void allocate_running_state(DSRunningState *state, DeepseekConfig *config) {
+    state->topk_routing_results = calloc(config->n_routed_experts, sizeof(float));
+    state->routed_expert_up_scratch = calloc(config->moe_hidden_size, sizeof(float));
+    state->routed_expert_swiglu_scratch = calloc(config->moe_hidden_size, sizeof(float));
+    state->routed_expert_down_scratch = calloc(config->hidden_dim, sizeof(float));
+
+    state->shared_expert_up_scratch =
+        calloc(config->moe_hidden_size * config->n_shared_experts, sizeof(float));
+    state->shared_expert_swiglu_scratch =
+        calloc(config->moe_hidden_size * config->n_shared_experts, sizeof(float));
+    state->shared_expert_down_scratch = calloc(config->hidden_dim, sizeof(float));
+
+    state->moe_ffn_sum = calloc(config->hidden_dim, sizeof(float));
+}
+
+void free_running_state(DSRunningState *state) {
+    free(state->topk_routing_results);
+    free(state->routed_expert_up_scratch);
+    free(state->routed_expert_swiglu_scratch);
+    free(state->routed_expert_down_scratch);
+
+    free(state->shared_expert_up_scratch);
+    free(state->shared_expert_swiglu_scratch);
+    free(state->shared_expert_down_scratch);
+
+    free(state->moe_ffn_sum);
+}

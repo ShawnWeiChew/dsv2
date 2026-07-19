@@ -88,7 +88,9 @@ void ds_matmul_4bit(
             _Float16 bias = biases[scale_bias_idx];
 
             for (int i = 0; i < DS_4BIT_MATMUL_NUM_WEIGHTS_PER_UINT32; i++) {
-                sum += (expanded_weights[i] - bias) * scale * in[in_idx + i];
+                // NOTE: MLX does quantization with w*S + bias, not the traditional (w - bias) * S
+                // :cries:
+                sum += ((float)expanded_weights[i] * scale + bias) * in[in_idx + i];
             }
 
             in_idx += DS_4BIT_MATMUL_NUM_WEIGHTS_PER_UINT32;
@@ -99,6 +101,18 @@ void ds_matmul_4bit(
         }
 
         out[row] = sum;
+    }
+}
+
+void matmul(float *c, float *a, _Float16 *b, size_t N, size_t K) {
+    for (int i = 0; i < N; i++) {
+        int outer_idx = i * K;
+
+        float sum = 0.0f;
+        for (int j = 0; j < K; j++) {
+            sum += b[outer_idx + j] * a[j];
+        }
+        c[i] = sum;
     }
 }
 
@@ -197,4 +211,208 @@ void free_yarn_sin_cos_cache(YarnConstants *yarn_constants) {
     free(yarn_constants->sin);
     free(yarn_constants->cos);
     free(yarn_constants->access_pattern);
+}
+
+void transpose(float *in, float *out, size_t M, size_t N) {
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < M; j++) {
+            out[i * M + j] = in[j * N + i];
+        }
+    }
+}
+
+static int compare_expert_scores(const void *a, const void *b) {
+    // qsort itself returns < 0 if the first should come before second
+    // we want the highest scores first, so we should return the negative value
+
+    // NOTE: this was a simple thing to do but I kind of missed it
+    if (((DSRoutedExpert *)a)->score > ((DSRoutedExpert *)b)->score) {
+        return -1;
+    } else if (((DSRoutedExpert *)a)->score < ((DSRoutedExpert *)b)->score) {
+        return 1;
+    }
+    return 0;
+}
+
+// we have the small advantage that there is no need for sorting within the experts themselves
+// there is probably some better implementation of this using a min heap, but I am going to make
+// this as simply as possible first
+void identify_topk(
+    DSRoutedExpert top_experts[], float *gating_result, int num_experts_to_select,
+    int num_experts_total
+) {
+    DSRoutedExpert all_experts[num_experts_total];
+
+    for (int i = 0; i < num_experts_total; i++) {
+        all_experts[i].score = gating_result[i];
+        all_experts[i].idx = i;
+    }
+
+    qsort(all_experts, num_experts_total, sizeof(DSRoutedExpert), compare_expert_scores);
+    memcpy(top_experts, all_experts, sizeof(DSRoutedExpert) * num_experts_to_select);
+}
+
+// put result into silu result
+static void compute_swiglu(float *silu_result, float *swiglu_activation, size_t M, size_t N) {
+    for (int i = 0; i < M; i++) {
+        int outer_idx = i * N;
+        for (int j = 0; j < N; j++) {
+            silu_result[outer_idx + j] =
+                silu_result[outer_idx + j] * swiglu_activation[outer_idx + j];
+        }
+    }
+}
+
+void ds_moe_layer(
+    DSRunningState *state, DeepseekConfig *config, DSMoELayerWeights *weights, float *in
+) {
+    // input is (2048, 1) -> (64, 1)
+    matmul(
+        state->topk_routing_results,
+        in,
+        weights->moe_gate_weights,
+        config->n_routed_experts,
+        config->hidden_dim
+    );
+
+    // NOTE: we currently assume that every input has sequence length of 1
+    softmax(state->topk_routing_results, 1, config->n_routed_experts);
+
+    DSRoutedExpert top_experts[config->n_experts_per_token];
+    identify_topk(
+        top_experts,
+        state->topk_routing_results,
+        config->n_experts_per_token,
+        config->n_routed_experts
+    );
+
+    memset(state->moe_ffn_sum, 0, sizeof(float) * config->hidden_dim);
+
+    // perform expert routing and ffn
+    for (int i = 0; i < config->n_experts_per_token; i++) {
+        int scales_and_biases_up_offset = top_experts[i].idx * config->moe_hidden_size * 32;
+        int weights_up_offset = top_experts[i].idx * config->moe_hidden_size * 256;
+
+        // (1408, 2048) @ (2048,) -> (1408,)
+        // oddly enough, this up proj is smaller
+        ds_matmul_4bit(
+            state->routed_expert_up_scratch,
+            in,
+            weights->routed_up_weights + weights_up_offset,
+            weights->routed_up_scales + scales_and_biases_up_offset,
+            weights->routed_up_biases + scales_and_biases_up_offset,
+            config->moe_hidden_size,
+            config->hidden_dim
+        );
+
+        // printf(
+        //     "exp[0]: %d, %.6f  exp[1]: %d, %.6f\n",
+        //     top_experts[0].idx,
+        //     top_experts[0].score,
+        //     top_experts[1].idx,
+        //     top_experts[1].score
+        // );
+        // for (int k = 0; k < 10; k++) {
+        //     float a = state->routed_expert_up_scratch[k];
+        //     printf("%.6f | ", a);
+        // }
+        // putchar('\n');
+        // exit(2);
+
+        // other swiglu weight
+        // (1408, 2048) @ (2048,) -> (1408,)
+        ds_matmul_4bit(
+            state->routed_expert_swiglu_scratch,
+            in,
+            weights->routed_gate_weights + weights_up_offset,
+            weights->routed_gate_scales + scales_and_biases_up_offset,
+            weights->routed_gate_biases + scales_and_biases_up_offset,
+            config->moe_hidden_size,
+            config->hidden_dim
+        );
+
+        silu(state->routed_expert_swiglu_scratch, 1, config->moe_hidden_size);
+
+        compute_swiglu(
+            state->routed_expert_up_scratch,
+            state->routed_expert_swiglu_scratch,
+            1,
+            config->moe_hidden_size
+        );
+
+        // down proj
+        // (2048, 1408) @ (1408,) -> (2048,)
+        int scales_and_biases_down_offset = top_experts[i].idx * config->hidden_dim * 22;
+        int weights_down_offset = top_experts[i].idx * config->hidden_dim * 176;
+        ds_matmul_4bit(
+            state->routed_expert_down_scratch,
+            state->routed_expert_up_scratch,
+            weights->routed_down_weights + weights_down_offset,
+            weights->routed_down_scales + scales_and_biases_down_offset,
+            weights->routed_down_biases + scales_and_biases_down_offset,
+            config->hidden_dim,
+            config->moe_hidden_size
+        );
+
+        // apply expert scaling
+        float current_expert_score = top_experts[i].score;
+        for (int j = 0; j < config->hidden_dim; j++) {
+            state->moe_ffn_sum[j] += current_expert_score * state->routed_expert_down_scratch[j];
+        }
+    }
+
+    // shared expert ffn
+    // the weights format combines tow of them together so we just apply the weights at the same
+    // time
+    // (1408 * 2, 2048) @ (2048,) -> (1408 * 2,)
+    ds_matmul_4bit(
+        state->shared_expert_up_scratch,
+        in,
+        weights->shared_up_weights,
+        weights->shared_up_scales,
+        weights->shared_up_biases,
+        config->moe_hidden_size * 2,
+        config->hidden_dim
+    );
+
+    // (1408 * 2, 2048) @ (2048,) -> (1408 * 2,)
+    ds_matmul_4bit(
+        state->shared_expert_swiglu_scratch,
+        in,
+        weights->shared_gate_weights,
+        weights->shared_gate_scales,
+        weights->shared_gate_biases,
+        config->moe_hidden_size * 2,
+        config->hidden_dim
+    );
+
+    silu(state->shared_expert_swiglu_scratch, 1, config->moe_hidden_size * 2);
+
+    compute_swiglu(
+        state->shared_expert_up_scratch,
+        state->shared_expert_swiglu_scratch,
+        1,
+        config->moe_hidden_size * 2
+    );
+
+    // (2048, 1408 * 2) @ (1408 * 2,) -> (2048,)
+    ds_matmul_4bit(
+        state->shared_expert_down_scratch,
+        state->shared_expert_up_scratch,
+        weights->shared_down_weights,
+        weights->shared_down_scales,
+        weights->shared_down_biases,
+        config->hidden_dim,
+        config->moe_hidden_size * 2
+    );
+
+    // for (int i = 0; i < 2048; i++) {
+    //     printf("%f | ", state->shared_expert_down_scratch[i]);
+    // }
+    // putchar('\n');
+    // exit(3);
+
+    for (int i = 0; i < config->hidden_dim; i++) {
+        state->moe_ffn_sum[i] += state->shared_expert_down_scratch[i];
+    }
 }

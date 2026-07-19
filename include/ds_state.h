@@ -149,4 +149,22 @@ typedef struct {
 void load_weights(DSWeights *weights);
 
 void free_weights(DSWeights *weights);
+
+typedef struct {
+    // MoE layer
+    float *topk_routing_results;         // (64,)
+    float *routed_expert_up_scratch;     // (1408,)
+    float *routed_expert_swiglu_scratch; // (1408,)
+    float *routed_expert_down_scratch;   // (2048,)
+
+    float *shared_expert_up_scratch;     // (1408 * 2,)
+    float *shared_expert_swiglu_scratch; // (1408 * 2,)
+    float *shared_expert_down_scratch;   // (2048,)
+
+    float *moe_ffn_sum; // (2048,)
+} DSRunningState;
+
+void allocate_running_state(DSRunningState *state, DeepseekConfig *config);
+void free_running_state(DSRunningState *state);
+
 #endif

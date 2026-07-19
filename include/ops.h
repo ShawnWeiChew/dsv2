@@ -2,6 +2,7 @@
 #define OPS_H
 
 #include "config.h"
+#include "ds_state.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
@@ -29,6 +30,11 @@ void silu(float *in, size_t M, size_t N);
 void ds_matmul_4bit(
     float *out, float *in, uint32_t *weights, _Float16 *scales, _Float16 *biases, size_t N, size_t K
 );
+
+/**
+ * b (N, K) @ a (K,) -> c (N,)
+ */
+void matmul(float *c, float *a, _Float16 *b, size_t N, size_t K);
 
 #define DS_YARN_ROTATION_FLOOR   1.0f
 #define DS_YARN_ROTATION_CEILING 32.0f
@@ -64,5 +70,27 @@ void setup_yarn_sin_cos_cache(
 void yarn(float *in, float *out, size_t M, size_t N, YarnConstants *yarn_constants);
 
 void free_yarn_sin_cos_cache(YarnConstants *yarn_constants);
+
+void transpose(float *in, float *out, size_t M, size_t N);
+
+typedef struct {
+    float score;
+    size_t idx;
+} DSRoutedExpert;
+void identify_topk(
+    DSRoutedExpert top_experts[], float *gating_result, int num_experts_to_select,
+    int num_experts_total
+);
+
+/**
+ * Performs the MoE operations
+ * - MoE gate
+ * - Routing to top-k experts & Scaling of their outputs
+ * - Routing through shared experts
+ * - Summation
+ */
+void ds_moe_layer(
+    DSRunningState *state, DeepseekConfig *config, DSMoELayerWeights *weights, float *in
+);
 
 #endif
