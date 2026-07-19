@@ -99,8 +99,13 @@ void ds_moe_layer(
  * - kv_b_proj
  * - q_proj ->
  */
-void ds_mla_layer(
-    DSRunningState *state, DeepseekConfig *config, DSMLALayerWeights *weights, float *in
+void ds_mla_layer_naive(
+    DSRunningState *state, DeepseekConfig *config, DSMLALayerWeights *weights, float *in,
+    int layer_no, int seq_no, YarnConstants *yarn_constants
+);
+
+void ds_mlp_layer(
+    DSRunningState *state, DeepseekConfig *config, DSMLPLayerWeights *weights, float *in
 );
 
 #endif

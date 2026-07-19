@@ -46,6 +46,9 @@ typedef struct {
     int qk_rope_head_dim;
 
     float rms_norm_eps;
+
+    // mlp configs
+    int mlp_hidden;
 } DeepseekConfig;
 
 #define QC_GROUP_SIZE 64

@@ -152,8 +152,18 @@ void free_weights(DSWeights *weights);
 
 typedef struct {
     // MLA layer
-    float *kv_lora_cache; // (layer, sequence_number, 512), q here stands for quantized
-    float *k_rope_cache;  // (layer, sequence_number, 64)
+    size_t max_sequence_len;
+    float *kv_lora_rope_scratch; // (512 + 64,) we put them together
+                                 // since that is how the matmul generates them
+    float *k_rope_cache;         // (layer, sequence, 64)
+    float *q_nope_rope_scratch;  // (3072,) -> (16, 192)
+    float *q_rope_scratch; // (16, 64)  we need this because the weights are not cleanly separated +
+                           // yarn function cannot do inplace
+    float *kv_cache;       // (layer, max_sequence_length, 4096) ->
+                           // (layer, max_sequence_length, 16, 128 * 2), store K_nope first then V
+    float *qk_attention_scores_scratch; // (max_sequence_length)
+    float *final_attention_score;       // (16, 128) -> (2048)
+    float *mla_out_proj_res;            // (2048)
 
     // MoE layer
     float *topk_routing_results;         // (64,)
@@ -166,6 +176,11 @@ typedef struct {
     float *shared_expert_down_scratch;   // (2048,)
 
     float *moe_ffn_sum; // (2048,)
+
+    // MLP layer
+    float *mlp_up_scratch;     // (10944,)
+    float *mlp_swiglu_scratch; // (10944,)
+    float *mlp_down_scratch;   // (2048,)
 } DSRunningState;
 
 /**

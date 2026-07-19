@@ -396,3 +396,208 @@ void ds_moe_layer(
         state->moe_ffn_sum[i] += state->shared_expert_down_scratch[i];
     }
 }
+
+static void ds_mla_naive_qk_attention_score_matmul(
+    DeepseekConfig *config, float *k_nope, float *k_rope, float *q_nope, float *q_rope,
+    int layer_no, int seq_no, size_t max_generation_length, float *qk_attention_scores_scratch,
+    float *final_attention_scores
+) {
+    memset(final_attention_scores, 0, config->hidden_dim * sizeof(float));
+
+    for (int h = 0; h < config->n_attn_heads; h++) {
+        // calculate like this because the offsets for the rope heads are 192 apart
+        // there is no sequence based offset since there is only 1 query
+        int head_offset_for_q_nope = h * (config->qk_rope_head_dim + config->qk_nope_head_dim);
+
+        // iterate through the sequence
+        // NOTE: this is something I glossed over in llama2.c, but attention requires that you
+        // compute the attention scores for the current token as well.
+        for (int s = 0; s <= seq_no; s++) {
+            float sequence_sum = 0;
+
+            int sequence_offset_for_k_nope =
+                layer_no * max_generation_length * (config->hidden_dim * 2) + // layer offset
+                s * (config->hidden_dim * 2) +                                // sequence offset
+                h * (config->qk_nope_head_dim * 2);                           // head offset
+
+            // iterate through the dimensions
+            // (H, S, 128) @ (H, S, 128)
+            for (int j = 0; j < config->qk_nope_head_dim; j++) {
+                sequence_sum +=
+                    q_nope[head_offset_for_q_nope + j] * k_nope[sequence_offset_for_k_nope + j];
+            }
+
+            // and then the rope
+            int q_rope_offset = h * config->qk_rope_head_dim;
+            // no need to take into account head position, since this is broadcasted among the heads
+            int k_rope_offset = layer_no * max_generation_length * config->qk_rope_head_dim +
+                                s * config->qk_rope_head_dim;
+            for (int j = 0; j < config->qk_rope_head_dim; j++) {
+                sequence_sum += q_rope[q_rope_offset + j] * k_rope[k_rope_offset + j];
+            }
+
+            // (H, 1, S)
+            // the paper's formula uses another factor but it does not seem to be used in the MLX
+            // formula should be careful about the correctness of this later
+            // NOTE: once again forgot that the sqrt should come before the softmax
+            qk_attention_scores_scratch[s] = sequence_sum * sqrtf(config->n_attn_heads);
+        }
+
+        // attention softmax can just be computed for every head in the sequence
+        // (H, 1, S)
+        softmax(qk_attention_scores_scratch, 1, seq_no + 1);
+
+        // then multiply it by the value vector
+        // (H, 1, S) @ (H, S, 128)
+        int final_attention_score_offset = h * config->qk_nope_head_dim;
+
+        // slightly sketchy matmul, should check again
+        for (int s = 0; s <= seq_no; s++) {
+            int sequence_offset_for_k_nope =
+                layer_no * max_generation_length * (config->hidden_dim * 2) + // layer offset
+                s * (config->hidden_dim * 2) +                                // sequence offset
+                h * (config->qk_nope_head_dim * 2) +                          // head offset
+                config->hidden_dim;                                           //  k in front
+
+            int attn_score_offset = h * config->qk_nope_head_dim;
+            for (int i = 0; i < config->qk_nope_head_dim; i++) {
+                final_attention_scores[final_attention_score_offset + i] +=
+                    qk_attention_scores_scratch[s] * k_nope[sequence_offset_for_k_nope + i];
+            }
+        }
+    }
+}
+
+// TODO: verify dimensions, then test
+void ds_mla_layer_naive(
+    DSRunningState *state, DeepseekConfig *config, DSMLALayerWeights *weights, float *in,
+    int layer_no, int seq_no, YarnConstants *yarn_constants
+) {
+
+    // generate kv_lora, k_rope
+    // (2048) @ (2048, 576) -> (1, 576)
+    ds_matmul_4bit(
+        state->kv_lora_rope_scratch,
+        in,
+        weights->kv_a_proj_weights,
+        weights->kv_a_proj_scales,
+        weights->kv_a_proj_biases,
+        (config->kv_lora_rank + config->qk_rope_head_dim),
+        config->hidden_dim
+    );
+
+    rms_norm(
+        state->kv_lora_rope_scratch,
+        weights->kv_a_layernorm,
+        1,
+        config->kv_lora_rank,
+        config->rms_norm_eps
+    );
+
+    // apply YaRN to rope sequence before caching k rope
+    yarn(
+        state->kv_lora_rope_scratch + config->kv_lora_rank,
+        state->k_rope_cache + layer_no * state->max_sequence_len * config->qk_rope_head_dim +
+            seq_no * config->qk_rope_head_dim,
+        1,
+        config->qk_rope_head_dim,
+        yarn_constants
+    );
+
+    // generate q_nope and q_rope
+    // (2048) @ (2048, 3072) -> (1, 3072) -> (1, 16, 192)
+    ds_matmul_4bit(
+        state->q_nope_rope_scratch,
+        in,
+        weights->q_proj_weights,
+        weights->q_proj_scales,
+        weights->q_proj_biases,
+        config->n_attn_heads * (config->qk_nope_head_dim + config->qk_rope_head_dim),
+        config->hidden_dim
+    );
+    // apply rope to every head
+    for (int i = 0; i < config->n_attn_heads; i++) {
+        int rope_offset = (i + 1) * config->qk_nope_head_dim + i * config->qk_rope_head_dim;
+        yarn(
+            state->q_nope_rope_scratch + rope_offset,
+            state->q_rope_scratch + i * config->qk_rope_head_dim,
+            1,
+            config->qk_rope_head_dim,
+            yarn_constants
+        );
+    }
+
+    // NOTE: design used in the reference folder caches the up projection instead of the
+    // comporessed projection (1, 512) @ (512, 4096) -> (4096) [cached]
+    ds_matmul_4bit(
+        state->kv_cache + layer_no * state->max_sequence_len * (config->hidden_dim * 2) +
+            seq_no * config->hidden_dim * 2,
+        state->kv_lora_rope_scratch,
+        weights->kv_b_proj_weights,
+        weights->kv_b_proj_scales,
+        weights->kv_b_proj_biases,
+        config->hidden_dim * 2,
+        config->kv_lora_rank
+    );
+
+    ds_mla_naive_qk_attention_score_matmul(
+        config,
+        state->kv_cache,
+        state->k_rope_cache,
+        state->q_nope_rope_scratch,
+        state->q_rope_scratch,
+        layer_no,
+        seq_no,
+        state->max_sequence_len,
+        state->qk_attention_scores_scratch,
+        state->final_attention_score
+    );
+
+    // final out proj
+    ds_matmul_4bit(
+        state->mla_out_proj_res,
+        state->final_attention_score,
+        weights->o_proj_weights,
+        weights->o_proj_scales,
+        weights->o_proj_biases,
+        config->hidden_dim,
+        config->hidden_dim
+    );
+}
+
+void ds_mlp_layer(
+    DSRunningState *state, DeepseekConfig *config, DSMLPLayerWeights *weights, float *in
+) {
+    ds_matmul_4bit(
+        state->mlp_up_scratch,
+        in,
+        weights->up_proj_weights,
+        weights->up_proj_scales,
+        weights->up_proj_biases,
+        config->mlp_hidden,
+        config->hidden_dim
+    );
+
+    ds_matmul_4bit(
+        state->mlp_swiglu_scratch,
+        in,
+        weights->gate_proj_weights,
+        weights->gate_proj_scales,
+        weights->gate_proj_biases,
+        config->moe_hidden_size,
+        config->hidden_dim
+    );
+
+    silu(state->mlp_swiglu_scratch, 1, config->moe_hidden_size);
+    compute_swiglu(state->mlp_up_scratch, state->mlp_swiglu_scratch, 1, config->moe_hidden_size);
+
+    ds_matmul_4bit(
+        state->mlp_down_scratch,
+        state->mlp_up_scratch,
+        weights->down_proj_weights,
+        weights->down_proj_scales,
+        weights->down_proj_biases,
+        config->hidden_dim,
+        config->mlp_hidden
+    );
+}
