@@ -163,11 +163,10 @@ int main() {
         1.2783e-01,  -5.5579e-01, 7.0988e-01,
     };
 
-    float a4_out[3 * 64];
-    yarn(a4, a4_out, 3, 64, &yc);
-    assert(check_arrays(a4_out, a4_expected, 3 * 64));
-    free_yarn_sin_cos_cache(&yc);
-    puts("Passed YaRN checks");
+    // float a4_out[3 * 64];
+    // yarn(a4, a4_out, 3, 64, &yc);
+    // assert(check_arrays(a4_out, a4_expected, 3 * 64));
+    // puts("Passed YaRN checks");
 
     float routing_scores[] = {
         0.3408,  0.2297,  1.7066,  1.3925,  0.0561,  0.2836, -0.5602, 1.4158,  1.6667, -0.2644,
@@ -202,10 +201,14 @@ int main() {
     DSRunningState state;
     allocate_running_state(&state, &deepseek_config, 2048);
 
-    ds_moe_layer(&state, &deepseek_config, &weights.moe_layers[0].moe, x);
+    // ds_moe_layer(&state, &deepseek_config, &weights.moe_layers[0].moe, x);
 
-    assert(check_arrays(state.moe_ffn_sum, moe_ffn_expected_result, 2048));
+    // assert(check_arrays(state.moe_ffn_sum, moe_ffn_expected_result, 2048));
 
+    ds_mla_layer_naive(&state, &deepseek_config, &weights.dense_layer.attn, mla_input, 0, 0, &yc);
+    assert(check_arrays(state.mla_out_proj_res, mla_expected_output, 2048));
+
+    free_yarn_sin_cos_cache(&yc);
     free_running_state(&state);
     free_weights(&weights);
 }

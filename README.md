@@ -84,3 +84,33 @@
         - When doing the matmul absorbtion trick, the WukWq matrix is generated per head
         - `k_rope` gets shared and broadcasted for all styles of computation
         - During matmul absorbtion, `kv_lora` also gets broadcasted
+    - The composition of the KV projection is such that each head has the k and v values interleaved. Based on the implementation code, here is a quick test to show what that looks like:
+        ```python
+        import mlx.core as mx
+        import numpy as np
+
+        mx.random.seed(42)
+
+        # 2 sequence
+        # 4 heads, each head has a dim of 4 (2 key, 2 value)
+        # (S, HEAD, HIDDEN)
+        seq = mx.arange(16 * 2).reshape(2, 4, 4)
+        print(np.array(seq))
+        print("\n\n")
+
+        # within each sequence, the 16 activations are split up
+        # (HEAD, S, HIDDEN)
+        seq = seq.transpose(1, 0, 2)
+
+        print(np.array(seq))
+        print("\n\n")
+
+        a, b = mx.split(seq, [2], axis=-1)
+
+        # if it is what i am doing, then it should be
+        # a: 0..15
+        # b: 16..31
+
+        print(np.array(a.reshape(-1)))
+        print(np.array(b.reshape(-1)))
+        ```

@@ -123,19 +123,18 @@ void setup_yarn_sin_cos_cache(
     // run till the max sequence length
     // give the option to resize and recompute the cache if the sequence length overflows
     if (yarn_constants->cos == NULL || yarn_constants->sin == NULL) {
-        yarn_constants->cos = calloc(cache_length * config->qk_rope_head_dim, sizeof(float));
-        yarn_constants->sin = calloc(cache_length * config->qk_rope_head_dim, sizeof(float));
-        yarn_constants->access_pattern =
-            calloc(config->qk_rope_head_dim, sizeof(YarnInterleavedAccessPattern));
+        yarn_constants->cos = calloc(cache_length * config->qk_rope_head_dim / 2, sizeof(float));
+        yarn_constants->sin = calloc(cache_length * config->qk_rope_head_dim / 2, sizeof(float));
     } else {
-        yarn_constants->cos =
-            realloc(yarn_constants->cos, cache_length * config->qk_rope_head_dim * sizeof(float));
-        yarn_constants->sin =
-            realloc(yarn_constants->sin, cache_length * config->qk_rope_head_dim * sizeof(float));
+        yarn_constants->cos = realloc(
+            yarn_constants->cos, cache_length * config->qk_rope_head_dim / 2 * sizeof(float)
+        );
+        yarn_constants->sin = realloc(
+            yarn_constants->sin, cache_length * config->qk_rope_head_dim / 2 * sizeof(float)
+        );
     }
 
-    if (yarn_constants->cos == NULL || yarn_constants->sin == NULL ||
-        yarn_constants->access_pattern == NULL) {
+    if (yarn_constants->cos == NULL || yarn_constants->sin == NULL) {
         perror("Could not allocate space for yarn buffers");
         exit(1);
     }
@@ -165,44 +164,34 @@ void setup_yarn_sin_cos_cache(
         rotation_freqs[i / 2] = clamped_value * freq_scaled + (1 - clamped_value) * freq_original;
     }
 
+    // MLX stores 1/freq as the cache value and computes the sin cos values on the fly
     for (int j = 0; j < cache_length; j++) {
-        float *current_cos_cache_position = yarn_constants->cos + (j * config->qk_rope_head_dim);
-        float *current_sin_cache_position = yarn_constants->sin + (j * config->qk_rope_head_dim);
+        float *current_cos_cache_position =
+            yarn_constants->cos + (j * config->qk_rope_head_dim / 2);
+        float *current_sin_cache_position =
+            yarn_constants->sin + (j * config->qk_rope_head_dim / 2);
 
         for (int i = 0; i < config->qk_rope_head_dim / 2; i++) {
             // apply scaled position
             current_cos_cache_position[i] = cosf(j * rotation_freqs[i]);
-            current_cos_cache_position[i + config->qk_rope_head_dim / 2] =
-                cosf(j * rotation_freqs[i]);
-
             current_sin_cache_position[i] = sinf(j * rotation_freqs[i]);
-            current_sin_cache_position[i + config->qk_rope_head_dim / 2] =
-                sinf(j * rotation_freqs[i]);
         }
-    }
-
-    // setup access pattern -- this is kind of jank, idk if there is a better solution
-    for (int i = 0; i < config->qk_rope_head_dim; i++) {
-        bool is_before_halfway = i < config->qk_rope_head_dim / 2;
-        yarn_constants->access_pattern[i].idx1 =
-            is_before_halfway ? i * 2 : (i - config->qk_rope_head_dim / 2) * 2 + 1;
-
-        yarn_constants->access_pattern[i].idx2 =
-            is_before_halfway ? i * 2 + 1 : (i - config->qk_rope_head_dim / 2) * 2;
-        yarn_constants->access_pattern[i].idx_2_neg = is_before_halfway;
     }
 }
 
 void yarn(float *in, float *out, size_t M, size_t N, YarnConstants *yarn_constants) {
+    assert(N % 2 == 0);
+
     for (int i = 0; i < M; i++) {
         int outer_idx = i * N;
 
-        for (int j = 0; j < N; j++) {
-            out[outer_idx + j] = in[outer_idx + yarn_constants->access_pattern[j].idx1] *
-                                     yarn_constants->cos[outer_idx + j] +
-                                 in[outer_idx + yarn_constants->access_pattern[j].idx2] *
-                                     yarn_constants->sin[outer_idx + j] *
-                                     (yarn_constants->access_pattern[j].idx_2_neg ? -1 : 1);
+        for (int j = 0; j < N; j += 2) {
+            float v0 = in[outer_idx + j];
+            float v1 = in[outer_idx + j + 1];
+
+            out[outer_idx + j] = v0 * yarn_constants->cos[j / 2] - v1 * yarn_constants->sin[j / 2];
+            out[outer_idx + j + 1] =
+                v1 * yarn_constants->cos[j / 2] + v0 * yarn_constants->sin[j / 2];
         }
     }
 }
@@ -398,7 +387,7 @@ void ds_moe_layer(
 }
 
 static void ds_mla_naive_qk_attention_score_matmul(
-    DeepseekConfig *config, float *k_nope, float *k_rope, float *q_nope, float *q_rope,
+    DeepseekConfig *config, float *kv_cache, float *k_rope, float *q_nope, float *q_rope,
     int layer_no, int seq_no, size_t max_generation_length, float *qk_attention_scores_scratch,
     float *final_attention_scores
 ) {
@@ -418,13 +407,14 @@ static void ds_mla_naive_qk_attention_score_matmul(
             int sequence_offset_for_k_nope =
                 layer_no * max_generation_length * (config->hidden_dim * 2) + // layer offset
                 s * (config->hidden_dim * 2) +                                // sequence offset
-                h * (config->qk_nope_head_dim * 2);                           // head offset
+                h * (config->qk_nope_head_dim * 2); // head offset -- follow the format where the kv
+                                                    // values are stored in: k0, v0, k1, v1...
 
             // iterate through the dimensions
             // (H, S, 128) @ (H, S, 128)
             for (int j = 0; j < config->qk_nope_head_dim; j++) {
                 sequence_sum +=
-                    q_nope[head_offset_for_q_nope + j] * k_nope[sequence_offset_for_k_nope + j];
+                    q_nope[head_offset_for_q_nope + j] * kv_cache[sequence_offset_for_k_nope + j];
             }
 
             // and then the rope
@@ -439,8 +429,10 @@ static void ds_mla_naive_qk_attention_score_matmul(
             // (H, 1, S)
             // the paper's formula uses another factor but it does not seem to be used in the MLX
             // formula should be careful about the correctness of this later
-            // NOTE: once again forgot that the sqrt should come before the softmax
-            qk_attention_scores_scratch[s] = sequence_sum * sqrtf(config->n_attn_heads);
+            // NOTE: once again forgot that the sqrt should come before the softmax,
+            // I made the mistake here of not dividing by the sqrt() and multiplying by it instead
+            qk_attention_scores_scratch[s] =
+                sequence_sum / sqrtf(config->qk_nope_head_dim + config->qk_rope_head_dim);
         }
 
         // attention softmax can just be computed for every head in the sequence
@@ -453,16 +445,17 @@ static void ds_mla_naive_qk_attention_score_matmul(
 
         // slightly sketchy matmul, should check again
         for (int s = 0; s <= seq_no; s++) {
+            // made an indexing bug here, I think on reflection, q_nope and q_rope are too similar
+            // of names... should probably have a less similar naming convention next time
             int sequence_offset_for_k_nope =
                 layer_no * max_generation_length * (config->hidden_dim * 2) + // layer offset
                 s * (config->hidden_dim * 2) +                                // sequence offset
                 h * (config->qk_nope_head_dim * 2) +                          // head offset
-                config->hidden_dim;                                           //  k in front
+                config->qk_nope_head_dim; //  kv values are stored in: k0, v0, k1, v1...
 
-            int attn_score_offset = h * config->qk_nope_head_dim;
             for (int i = 0; i < config->qk_nope_head_dim; i++) {
                 final_attention_scores[final_attention_score_offset + i] +=
-                    qk_attention_scores_scratch[s] * k_nope[sequence_offset_for_k_nope + i];
+                    qk_attention_scores_scratch[s] * kv_cache[sequence_offset_for_k_nope + i];
             }
         }
     }
@@ -517,7 +510,8 @@ void ds_mla_layer_naive(
     );
     // apply rope to every head
     for (int i = 0; i < config->n_attn_heads; i++) {
-        int rope_offset = (i + 1) * config->qk_nope_head_dim + i * config->qk_rope_head_dim;
+        int rope_offset = (i + 1) * config->qk_nope_head_dim + // rope appears after every head
+                          i * config->qk_rope_head_dim;
         yarn(
             state->q_nope_rope_scratch + rope_offset,
             state->q_rope_scratch + i * config->qk_rope_head_dim,
@@ -530,8 +524,9 @@ void ds_mla_layer_naive(
     // NOTE: design used in the reference folder caches the up projection instead of the
     // comporessed projection (1, 512) @ (512, 4096) -> (4096) [cached]
     ds_matmul_4bit(
-        state->kv_cache + layer_no * state->max_sequence_len * (config->hidden_dim * 2) +
-            seq_no * config->hidden_dim * 2,
+        state->kv_cache +
+            layer_no * state->max_sequence_len * (config->hidden_dim * 2) + // layer offset
+            seq_no * config->hidden_dim * 2,                                // sequence offset
         state->kv_lora_rope_scratch,
         weights->kv_b_proj_weights,
         weights->kv_b_proj_scales,

@@ -579,10 +579,25 @@ void free_weights(DSWeights *weights) {
 void allocate_running_state(
     DSRunningState *state, DeepseekConfig *config, size_t max_sequence_len
 ) {
-    // TODO:  clean up allocations
+    state->max_sequence_len = max_sequence_len;
+
+    // MLA layer
+    state->kv_lora_rope_scratch =
+        calloc(config->kv_lora_rank + config->qk_rope_head_dim, sizeof(float));
     state->k_rope_cache =
         calloc(config->n_layers * max_sequence_len * config->qk_rope_head_dim, sizeof(float));
+    state->q_nope_rope_scratch =
+        calloc(config->n_attn_heads * (config->qk_nope_head_dim + config->qk_rope_head_dim), sizeof(float));
+    state->q_rope_scratch =
+        calloc(config->n_attn_heads * config->qk_rope_head_dim, sizeof(float));
+    state->kv_cache =
+        calloc(config->n_layers * max_sequence_len * (config->hidden_dim * 2), sizeof(float));
+    state->qk_attention_scores_scratch = calloc(max_sequence_len, sizeof(float));
+    state->final_attention_score =
+        calloc(config->n_attn_heads * config->qk_nope_head_dim, sizeof(float));
+    state->mla_out_proj_res = calloc(config->hidden_dim, sizeof(float));
 
+    // MoE layer
     state->topk_routing_results = calloc(config->n_routed_experts, sizeof(float));
     state->routed_expert_up_scratch = calloc(config->moe_hidden_size, sizeof(float));
     state->routed_expert_swiglu_scratch = calloc(config->moe_hidden_size, sizeof(float));
@@ -595,11 +610,25 @@ void allocate_running_state(
     state->shared_expert_down_scratch = calloc(config->hidden_dim, sizeof(float));
 
     state->moe_ffn_sum = calloc(config->hidden_dim, sizeof(float));
+
+    // MLP layer
+    state->mlp_up_scratch = calloc(config->mlp_hidden, sizeof(float));
+    state->mlp_swiglu_scratch = calloc(config->mlp_hidden, sizeof(float));
+    state->mlp_down_scratch = calloc(config->hidden_dim, sizeof(float));
 }
 
 void free_running_state(DSRunningState *state) {
+    // MLA layer
+    free(state->kv_lora_rope_scratch);
     free(state->k_rope_cache);
+    free(state->q_nope_rope_scratch);
+    free(state->q_rope_scratch);
+    free(state->kv_cache);
+    free(state->qk_attention_scores_scratch);
+    free(state->final_attention_score);
+    free(state->mla_out_proj_res);
 
+    // MoE layer
     free(state->topk_routing_results);
     free(state->routed_expert_up_scratch);
     free(state->routed_expert_swiglu_scratch);
@@ -610,4 +639,9 @@ void free_running_state(DSRunningState *state) {
     free(state->shared_expert_down_scratch);
 
     free(state->moe_ffn_sum);
+
+    // MLP layer
+    free(state->mlp_up_scratch);
+    free(state->mlp_swiglu_scratch);
+    free(state->mlp_down_scratch);
 }
