@@ -203,6 +203,10 @@ bool decode(Tokenizer *t, int output_logit, char *output_token_buffer) {
                 output_token_buffer[output_token_buffer_idx++] = ' ';
                 i += 2;
                 continue;
+            } else if (*char_as_int == DS_NEWLINE_CHARACTER_UTF_IDX) {
+                output_token_buffer[output_token_buffer_idx++] = '\n';
+                i += 2;
+                continue;
             }
         }
 

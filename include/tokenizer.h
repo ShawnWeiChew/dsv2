@@ -6,11 +6,12 @@
 #include <stdbool.h>
 #include <unistd.h>
 
-#define DS_TOKENIZER_FILE_NAME     "tokenizer.json"
-#define DS_TOKENIZER_BOS           100000
-#define DS_TOKENIZER_EOS           100001
-#define DS_SPACE_CHARCTER_IDX      207
-#define DS_SPACE_CHARACTER_UTF_IDX 0xA0C4
+#define DS_TOKENIZER_FILE_NAME       "tokenizer.json"
+#define DS_TOKENIZER_BOS             100000
+#define DS_TOKENIZER_EOS             100001
+#define DS_SPACE_CHARCTER_IDX        207
+#define DS_SPACE_CHARACTER_UTF_IDX   0xA0C4
+#define DS_NEWLINE_CHARACTER_UTF_IDX 0x8AC4
 
 extern DeepseekConfig deepseek_config;
 

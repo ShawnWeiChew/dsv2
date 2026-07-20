@@ -24,7 +24,7 @@ DeepseekConfig deepseek_config = {
     .mlp_hidden = DS_MLP_HIDDEN,
 };
 
-char prompt[] = "Argentina will win the world cup because ";
+char prompt[] = "Argentina ";
 const int max_generation_length = 2048;
 
 int main() {
