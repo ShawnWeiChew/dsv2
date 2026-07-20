@@ -1,6 +1,6 @@
 CC=gcc
-CFLAGS=-Wall
-DEBUG_CFLAGS=-fsanitize=address -g -fno-omit-frame-pointer
+CFLAGS=-Wall -Ofast
+DEBUG_CFLAGS=-fsanitize=address -g -fno-omit-frame-pointer 
 INCLUDE=-Iinclude -Ithirdparty
 LDFLAGS=-lm
 
@@ -24,16 +24,16 @@ TEST_OPS_TARGET=$(TARGET_FOLDER)/test_ops
 all : $(TARGET_NAME)
 
 $(TARGET_NAME) : $(TARGET_OBJ_FILE) $(SRC_OBJ_FILES)
-	$(CC) $(CFLAGS) $(DEBUG_CFLAGS) $(INCLUDE) -o $@ $^ $(LDFLAGS) 
+	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ $(LDFLAGS) 
 
 $(TARGET_OBJ_FILE) : $(TARGET_FILE_NAME) | $(TARGET_FOLDER)
-	$(CC) $(CFLAGS) $(DEBUG_CFLAGS) $(INCLUDE) -c -o $@ $^
+	$(CC) $(CFLAGS) $(INCLUDE) -c -o $@ $^
 
 # NOTE: this was the way, it becomes multiple rules
 # Also, the "|" on the right means that it is a prereq before the target is built, 
 # but it is also not something that would trigger a rebuild if it changes
 $(TARGET_FOLDER)/%.o : $(SRC_FOLDER)/%.c | $(TARGET_FOLDER)
-	$(CC) $(CFLAGS) $(DEBUG_CFLAGS) $(INCLUDE) -c -o $@ $< $(LDFLAGS)
+	$(CC) $(CFLAGS) $(INCLUDE) -c -o $@ $< $(LDFLAGS)
 
 check : $(TEST_OPS_TARGET) $(TEST_TOKENIZER_TARGET)
 	./build/test_ops

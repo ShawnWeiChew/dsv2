@@ -141,6 +141,12 @@ static void configure_offsets(DSWeights *weights) {
         "model.layers.0.mlp.down_proj"
     );
     load_all_quantized_fields(
+        (void **)&weights->dense_layer.mlp.gate_proj_biases,
+        root,
+        data_base_1,
+        "model.layers.0.mlp.gate_proj"
+    );
+    load_all_quantized_fields(
         (void **)&weights->dense_layer.mlp.up_proj_biases,
         root,
         data_base_1,
@@ -586,10 +592,10 @@ void allocate_running_state(
         calloc(config->kv_lora_rank + config->qk_rope_head_dim, sizeof(float));
     state->k_rope_cache =
         calloc(config->n_layers * max_sequence_len * config->qk_rope_head_dim, sizeof(float));
-    state->q_nope_rope_scratch =
-        calloc(config->n_attn_heads * (config->qk_nope_head_dim + config->qk_rope_head_dim), sizeof(float));
-    state->q_rope_scratch =
-        calloc(config->n_attn_heads * config->qk_rope_head_dim, sizeof(float));
+    state->q_nope_rope_scratch = calloc(
+        config->n_attn_heads * (config->qk_nope_head_dim + config->qk_rope_head_dim), sizeof(float)
+    );
+    state->q_rope_scratch = calloc(config->n_attn_heads * config->qk_rope_head_dim, sizeof(float));
     state->kv_cache =
         calloc(config->n_layers * max_sequence_len * (config->hidden_dim * 2), sizeof(float));
     state->qk_attention_scores_scratch = calloc(max_sequence_len, sizeof(float));
@@ -615,6 +621,30 @@ void allocate_running_state(
     state->mlp_up_scratch = calloc(config->mlp_hidden, sizeof(float));
     state->mlp_swiglu_scratch = calloc(config->mlp_hidden, sizeof(float));
     state->mlp_down_scratch = calloc(config->hidden_dim, sizeof(float));
+
+    // decoder layer
+    state->decode_input_rms_norm_result = calloc(config->hidden_dim, sizeof(float));
+    state->decode_post_attn_rms_norm_result = calloc(config->hidden_dim, sizeof(float));
+
+    // lm head output
+    state->lm_head_scratch = calloc(config->vocab_size, sizeof(float));
+
+    // embedding layer
+    state->token_embedding_scratch = calloc(config->hidden_dim, sizeof(float));
+
+    if (!state->kv_lora_rope_scratch || !state->k_rope_cache || !state->q_nope_rope_scratch ||
+        !state->q_rope_scratch || !state->kv_cache || !state->qk_attention_scores_scratch ||
+        !state->final_attention_score || !state->mla_out_proj_res || !state->topk_routing_results ||
+        !state->routed_expert_up_scratch || !state->routed_expert_swiglu_scratch ||
+        !state->routed_expert_down_scratch || !state->shared_expert_up_scratch ||
+        !state->shared_expert_swiglu_scratch || !state->shared_expert_down_scratch ||
+        !state->moe_ffn_sum || !state->mlp_up_scratch || !state->mlp_swiglu_scratch ||
+        !state->mlp_down_scratch || !state->decode_input_rms_norm_result ||
+        !state->decode_post_attn_rms_norm_result || !state->lm_head_scratch ||
+        !state->token_embedding_scratch) {
+        perror("Failed to allocate memory for running state");
+        exit(1);
+    }
 }
 
 void free_running_state(DSRunningState *state) {
@@ -644,4 +674,14 @@ void free_running_state(DSRunningState *state) {
     free(state->mlp_up_scratch);
     free(state->mlp_swiglu_scratch);
     free(state->mlp_down_scratch);
+
+    // decoder layer
+    free(state->decode_input_rms_norm_result);
+    free(state->decode_post_attn_rms_norm_result);
+
+    // lm head output
+    free(state->lm_head_scratch);
+
+    // embedding layer
+    free(state->token_embedding_scratch);
 }

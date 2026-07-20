@@ -179,8 +179,12 @@ void setup_yarn_sin_cos_cache(
     }
 }
 
-void yarn(float *in, float *out, size_t M, size_t N, YarnConstants *yarn_constants) {
+// NOTE: forgot to include seq_no in yarn encoding bruh
+void yarn(float *in, float *out, size_t M, size_t N, YarnConstants *yarn_constants, int seq_no) {
     assert(N % 2 == 0);
+
+    float *cos_cache = yarn_constants->cos + (seq_no * N / 2);
+    float *sin_cache = yarn_constants->sin + (seq_no * N / 2);
 
     for (int i = 0; i < M; i++) {
         int outer_idx = i * N;
@@ -189,9 +193,9 @@ void yarn(float *in, float *out, size_t M, size_t N, YarnConstants *yarn_constan
             float v0 = in[outer_idx + j];
             float v1 = in[outer_idx + j + 1];
 
-            out[outer_idx + j] = v0 * yarn_constants->cos[j / 2] - v1 * yarn_constants->sin[j / 2];
+            out[outer_idx + j] = v0 * cos_cache[j / 2] - v1 * sin_cache[j / 2];
             out[outer_idx + j + 1] =
-                v1 * yarn_constants->cos[j / 2] + v0 * yarn_constants->sin[j / 2];
+                v1 * cos_cache[j / 2] + v0 * sin_cache[j / 2];
         }
     }
 }
@@ -494,7 +498,8 @@ void ds_mla_layer_naive(
             seq_no * config->qk_rope_head_dim,
         1,
         config->qk_rope_head_dim,
-        yarn_constants
+        yarn_constants,
+        seq_no
     );
 
     // generate q_nope and q_rope
@@ -517,7 +522,8 @@ void ds_mla_layer_naive(
             state->q_rope_scratch + i * config->qk_rope_head_dim,
             1,
             config->qk_rope_head_dim,
-            yarn_constants
+            yarn_constants,
+            seq_no
         );
     }
 
@@ -579,12 +585,12 @@ void ds_mlp_layer(
         weights->gate_proj_weights,
         weights->gate_proj_scales,
         weights->gate_proj_biases,
-        config->moe_hidden_size,
+        config->mlp_hidden,
         config->hidden_dim
     );
 
-    silu(state->mlp_swiglu_scratch, 1, config->moe_hidden_size);
-    compute_swiglu(state->mlp_up_scratch, state->mlp_swiglu_scratch, 1, config->moe_hidden_size);
+    silu(state->mlp_swiglu_scratch, 1, config->mlp_hidden);
+    compute_swiglu(state->mlp_up_scratch, state->mlp_swiglu_scratch, 1, config->mlp_hidden);
 
     ds_matmul_4bit(
         state->mlp_down_scratch,
@@ -595,4 +601,150 @@ void ds_mlp_layer(
         config->hidden_dim,
         config->mlp_hidden
     );
+}
+
+void ds_dense_decoder_layer(
+    DSRunningState *state, DeepseekConfig *config, DSWeights *weights, float *in, int layer_no,
+    int sequence_no, YarnConstants *yarn_constants
+) {
+    assert(layer_no == 0);
+
+    // layernorm on the input
+    memcpy(state->decode_input_rms_norm_result, in, sizeof(float) * config->hidden_dim);
+    rms_norm(
+        state->decode_input_rms_norm_result,
+        weights->dense_layer.mlp.input_layernorm,
+        1,
+        config->hidden_dim,
+        config->rms_norm_eps
+    );
+
+    ds_mla_layer_naive(
+        state,
+        config,
+        &weights->dense_layer.attn,
+        state->decode_input_rms_norm_result,
+        layer_no,
+        sequence_no,
+        yarn_constants
+    );
+
+    // residual add
+    for (int i = 0; i < config->hidden_dim; i++) {
+        state->mla_out_proj_res[i] += in[i];
+    }
+
+    memcpy(state->decode_post_attn_rms_norm_result, state->mla_out_proj_res, sizeof(float) * config->hidden_dim);
+    rms_norm(
+        state->decode_post_attn_rms_norm_result,
+        weights->dense_layer.attn.post_attention_layernorm,
+        1,
+        config->hidden_dim,
+        config->rms_norm_eps
+    );
+
+    ds_mlp_layer(state, config, &weights->dense_layer.mlp, state->decode_post_attn_rms_norm_result);
+
+    // another residual add
+    for (int i = 0; i < config->hidden_dim; i++) {
+        state->mlp_down_scratch[i] += state->mla_out_proj_res[i];
+    }
+}
+
+void ds_moe_decode_layer(
+    DSRunningState *state, DeepseekConfig *config, DSWeights *weights, float *in, int layer_no,
+    int sequence_no, YarnConstants *yarn_constants
+) {
+    assert(layer_no > 0);
+
+    memcpy(state->decode_input_rms_norm_result, in, sizeof(float) * config->hidden_dim);
+    rms_norm(
+        state->decode_input_rms_norm_result,
+        weights->moe_layers[layer_no - 1].moe.input_layernorm,
+        1,
+        config->hidden_dim,
+        config->rms_norm_eps
+    );
+
+    ds_mla_layer_naive(
+        state,
+        config,
+        &weights->moe_layers[layer_no - 1].attn,
+        state->decode_input_rms_norm_result,
+        layer_no,
+        sequence_no,
+        yarn_constants
+    );
+
+    // residual add
+    for (int i = 0; i < config->hidden_dim; i++) {
+        state->mla_out_proj_res[i] += in[i];
+    }
+
+    memcpy(state->decode_post_attn_rms_norm_result, state->mla_out_proj_res, sizeof(float) * config->hidden_dim);
+    rms_norm(
+        state->decode_post_attn_rms_norm_result,
+        weights->moe_layers[layer_no - 1].attn.post_attention_layernorm,
+        1,
+        config->hidden_dim,
+        config->rms_norm_eps
+    );
+
+    ds_moe_layer(
+        state,
+        config,
+        &weights->moe_layers[layer_no - 1].moe,
+        state->decode_post_attn_rms_norm_result
+    );
+
+    for (int i = 0; i < config->hidden_dim; i++) {
+        state->moe_ffn_sum[i] += state->mla_out_proj_res[i];
+    }
+}
+
+void ds_get_quantized_embeddings(
+    DSRunningState *state, DeepseekConfig *config, DSEmbedLayerWeights *weights, int token_no
+) {
+    int row_index_in_weights =
+        token_no * config->hidden_dim / DS_4BIT_MATMUL_NUM_WEIGHTS_PER_UINT32;
+    int row_index_in_scales_and_biases = token_no * config->hidden_dim / DS_4BIT_MATMUL_GROUPSIZE;
+
+    // each 64 outputs correspond to 8 sets of weights and 1 set of scales and biases
+    for (int scales_and_bias_offset = 0;
+         scales_and_bias_offset < config->hidden_dim / DS_4BIT_MATMUL_GROUPSIZE;
+         scales_and_bias_offset++) {
+        _Float16 scale = weights->scales[row_index_in_scales_and_biases + scales_and_bias_offset];
+        _Float16 bias = weights->biases[row_index_in_scales_and_biases + scales_and_bias_offset];
+
+        for (int weight_offset = 0; weight_offset < 8; weight_offset++) {
+            uint32_t weight =
+                weights->weights[row_index_in_weights + scales_and_bias_offset * 8 + weight_offset];
+
+            uint8_t unpacked_weights[DS_4BIT_MATMUL_NUM_WEIGHTS_PER_UINT32];
+            unpack_weights(weight, unpacked_weights);
+
+            int output_embedding_mini_group_offset =
+                scales_and_bias_offset * DS_4BIT_MATMUL_GROUPSIZE +
+                weight_offset * DS_4BIT_MATMUL_NUM_WEIGHTS_PER_UINT32;
+            for (int output_offset = 0; output_offset < DS_4BIT_MATMUL_NUM_WEIGHTS_PER_UINT32;
+                 output_offset++) {
+                state->token_embedding_scratch[output_embedding_mini_group_offset + output_offset] =
+                    unpacked_weights[output_offset] * scale + bias;
+            }
+        }
+    }
+}
+
+int ds_sample_argmax(DSRunningState *state, DeepseekConfig *config) {
+    float best_score = state->lm_head_scratch[0];
+    int best_token_idx = 0;
+
+    for (int i = 1; i < config->vocab_size; i++) {
+        if (state->lm_head_scratch[i] > best_score) {
+            best_score = state->lm_head_scratch[i];
+            best_token_idx = i;
+        }
+    }
+
+    return best_token_idx;
 }

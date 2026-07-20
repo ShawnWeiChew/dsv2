@@ -12,14 +12,16 @@
 - [ ] Forward pass operations
     - [x] Tokenization
     - [ ] Embedding Generation
-    - [ ] MLA
+    - [x] MLA
     - [x] MoE gate
-    - [ ] MoE ffn
-- [ ] State to manage
+    - [x] MoE ffn
+- [x] State to manage
     - [x] JSON parsing
     - [x] Weight loading
         - [x] Figure out weight layout
-    - [ ] KV cache
+    - [x] KV cache
+
+** Disclaimer: While I try to replicate the MLX output as best as I can, MLX's native fp16 operations and my CPU's lack of native fp16 support mean that there is eventually divergence in outputs **
 
 ### Some Notes / Mistakes I made
 - Tokenizer

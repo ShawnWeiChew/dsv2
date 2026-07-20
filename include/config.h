@@ -17,6 +17,7 @@
 #define DS_KV_LORA_RANK              512
 #define DS_QK_NOPE_HEAD_DIM          128
 #define DS_QK_ROPE_HEAD_DIM          64
+#define DS_MLP_HIDDEN                10944
 #define DS_RMS_NORM_EPS              1e-6f
 
 #define DS_MAX_TOKEN_LEN             128 // this was determined by inspecting the tokenizer.json

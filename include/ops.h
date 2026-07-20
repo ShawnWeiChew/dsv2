@@ -67,7 +67,7 @@ void setup_yarn_sin_cos_cache(
 /**
  * M gives the outer position, N gives the position within the hidden dimension
  */
-void yarn(float *in, float *out, size_t M, size_t N, YarnConstants *yarn_constants);
+void yarn(float *in, float *out, size_t M, size_t N, YarnConstants *yarn_constants, int seq_no);
 
 void free_yarn_sin_cos_cache(YarnConstants *yarn_constants);
 
@@ -107,5 +107,30 @@ void ds_mla_layer_naive(
 void ds_mlp_layer(
     DSRunningState *state, DeepseekConfig *config, DSMLPLayerWeights *weights, float *in
 );
+
+/**
+ * Output goes into state.mlp_down_scratch
+ */
+void ds_dense_decoder_layer(
+    DSRunningState *state, DeepseekConfig *config, DSWeights *weights, float *in, int layer_no,
+    int sequence_no, YarnConstants *yarn_constants
+);
+
+/**
+ * Output goes into state->moe_ffn_sum
+ */
+void ds_moe_decode_layer(
+    DSRunningState *state, DeepseekConfig *config, DSWeights *weights, float *in, int layer_no,
+    int sequence_no, YarnConstants *yarn_constants
+);
+
+/**
+ * Output goes into state->token_embedding_scratch
+ */
+void ds_get_quantized_embeddings(
+    DSRunningState *state, DeepseekConfig *config, DSEmbedLayerWeights *weights, int token_no
+);
+
+int ds_sample_argmax(DSRunningState *state, DeepseekConfig *config);
 
 #endif

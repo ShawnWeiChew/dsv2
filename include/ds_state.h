@@ -181,6 +181,16 @@ typedef struct {
     float *mlp_up_scratch;     // (10944,)
     float *mlp_swiglu_scratch; // (10944,)
     float *mlp_down_scratch;   // (2048,)
+
+    // decoder layer
+    float *decode_input_rms_norm_result;     // (2048)
+    float *decode_post_attn_rms_norm_result; // (2048)
+
+    // lm head output
+    float *lm_head_scratch; // (102400)
+
+    // embedding layer
+    float *token_embedding_scratch;
 } DSRunningState;
 
 /**
